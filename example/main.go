@@ -10,39 +10,60 @@ import (
 )
 
 func main() {
-	// Create a new human-readable handler with default options
-	handler := humanlog.NewHandler(os.Stdout, nil)
-	logger := slog.New(handler)
+	// --- Default Handler ---
+	// Create a new human-readable handler with default options.
+	// By default, AddSource is true, which adds the source file and line number.
+	defaultHandler := humanlog.NewHandler(os.Stdout, nil) // nil opts -> use defaults
+	logger := slog.New(defaultHandler)
 
-	// Set the default logger
+	// Set the default logger to see output from top-level slog functions.
 	slog.SetDefault(logger)
 
-	// Log messages with different levels and attributes
-	logger.Info("Short message")
-	logger.Info("This is a message that will be truncated because it's too long for the fixed-width field")
+	slog.Info("This message comes from the default logger.")
+	slog.Info("This is a message that will be truncated because it's too long for the fixed-width field, which is a feature of this handler.")
 
-	logger.Debug("Debug message with attributes", "count", 42, "enabled", true)
-	logger.Info("Info message with attributes", "user", "john", "action", "login")
-	logger.Warn("Warning message with attributes", "latency", 150*time.Millisecond, "threshold", 100*time.Millisecond)
-	logger.Error("Error message with attributes", "error", "connection refused", "retries", 3)
+	// --- Logging with different levels and attributes ---
+	logger.Debug("Debug message with attributes", slog.Int("count", 42), slog.Bool("enabled", true))
+	logger.Info("Info message with attributes", slog.String("user", "john"), slog.String("action", "login"))
+	logger.Warn("Warning message with attributes", slog.Duration("latency", 150*time.Millisecond), slog.Duration("threshold", 100*time.Millisecond))
+	logger.Error("Error message with attributes", slog.String("error", "connection refused"), slog.Int("retries", 3))
 
-	// Log with structured attributes
+	// --- Structured logging with LogAttrs ---
 	logger.LogAttrs(context.Background(), slog.LevelInfo, "Structured attributes",
 		slog.String("service", "auth"),
 		slog.Int("status", 200),
 		slog.Duration("response_time", 30*time.Millisecond),
 	)
 
-	// Log with a group
-	logger = logger.WithGroup("request")
-	logger.Info("Request received",
-		"method", "GET",
-		"path", "/api/v1/users",
-		"remote_addr", "192.168.1.1",
+	// --- Logging with Groups ---
+	// Attributes logged with this logger will be prefixed with the group name.
+	groupedLogger := logger.WithGroup("request")
+	groupedLogger.Info("Request received",
+		slog.String("method", "GET"),
+		slog.String("path", "/api/v1/users"),
+		slog.String("remote_addr", "192.168.1.1"),
 	)
 
-	// Log with pre-registered attributes
-	logger = logger.With("request_id", "abc-123", "trace_id", "xyz-789")
-	logger.Info("Processing request")
-	logger.Error("Request failed", "error", "database connection error")
+	// --- Logging with pre-registered attributes ---
+	// These attributes are included in all subsequent logs from this logger instance.
+	requestLogger := logger.With(slog.String("request_id", "abc-123"), slog.String("trace_id", "xyz-789"))
+	requestLogger.Info("Processing request")
+	requestLogger.Error("Request failed", slog.String("error", "database connection error"))
+
+	// --- Combining Groups and pre-registered attributes ---
+	// Attributes are prefixed with the group name.
+	userRequestLogger := logger.WithGroup("user_request").With(slog.Int("user_id", 42))
+	userRequestLogger.Info("User action", slog.String("action", "update_profile"))
+
+	// --- Custom Handler without source ---
+	slog.Info("--- Now logging with a custom handler (AddSource disabled) ---")
+	customOpts := &humanlog.Options{
+		Level:      slog.LevelInfo,
+		TimeFormat: time.Kitchen,
+		AddSource:  false, // Explicitly disable source location
+	}
+	handlerNoSource := humanlog.NewHandler(os.Stdout, customOpts)
+	loggerNoSource := slog.New(handlerNoSource)
+	loggerNoSource.Info("This log comes from a custom handler and does not have source information.")
+	loggerNoSource.Warn("Note the different time format.")
 }

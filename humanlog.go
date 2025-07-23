@@ -2,6 +2,7 @@ package humanlog
 
 import (
 	"io"
+	"log/slog"
 )
 
 // NewHandler creates a new human-readable slog.Handler with the given options.
@@ -21,8 +22,14 @@ func NewHandler(w io.Writer, opts *Options) *Handler {
 	options.Writer = w
 
 	return &Handler{
+		h: slog.NewTextHandler(w, &slog.HandlerOptions{
+			AddSource:   opts.AddSource,
+			Level:       opts.Level,
+			ReplaceAttr: nil, // We do our own attribute handling
+		}),
 		opts:   options,
 		attrs:  nil,
 		groups: nil,
 	}
 }
+

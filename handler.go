@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,6 +28,7 @@ const (
 
 // Handler implements slog.Handler for human-readable logging output.
 type Handler struct {
+	h      slog.Handler
 	opts   Options
 	mu     sync.Mutex
 	attrs  []slog.Attr
@@ -34,8 +36,8 @@ type Handler struct {
 }
 
 // Enabled reports whether the handler handles records at the given level.
-func (h *Handler) Enabled(_ context.Context, level slog.Level) bool {
-	return level >= h.opts.Level
+func (h *Handler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.h.Enabled(ctx, level)
 }
 
 // Handle handles the Record.
@@ -69,17 +71,27 @@ func (h *Handler) Handle(_ context.Context, r slog.Record) error {
 
 	// Collect and format attributes
 	var attrs []string
-
-	// Add pre-registered attributes from WithAttrs
-	for _, attr := range h.attrs {
-		attrs = append(attrs, formatAttr(attr, h.opts.DisableColor))
-	}
+	attrs = h.appendAttrs(attrs, h.attrs)
 
 	// Add attributes from the record
 	r.Attrs(func(attr slog.Attr) bool {
-		attrs = append(attrs, formatAttr(attr, h.opts.DisableColor))
+		attrs = h.appendAttrs(attrs, []slog.Attr{attr})
 		return true
 	})
+
+	// Add source if enabled
+	if h.opts.AddSource && r.PC != 0 {
+		fs := runtime.CallersFrames([]uintptr{r.PC})
+		f, _ := fs.Next()
+		if f.File != "" {
+			shortFile := f.File
+			if i := strings.LastIndex(f.File, "/"); i != -1 {
+				shortFile = f.File[i+1:]
+			}
+			attr := slog.String(slog.SourceKey, fmt.Sprintf("%s:%d", shortFile, f.Line))
+			attrs = append(attrs, formatAttr(attr, h.opts.DisableColor))
+		}
+	}
 
 	// Add attributes if any
 	if len(attrs) > 0 {
@@ -94,45 +106,16 @@ func (h *Handler) Handle(_ context.Context, r slog.Record) error {
 
 // WithAttrs returns a new Handler whose attributes consist of h's attributes followed by attrs.
 func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	h2 := &Handler{
-		opts:   h.opts,
-		groups: make([]string, len(h.groups)),
-	}
-	copy(h2.groups, h.groups)
-	h2.attrs = make([]slog.Attr, 0, len(h.attrs)+len(attrs))
-	h2.attrs = append(h2.attrs, h.attrs...)
-
-	// Apply groups to attributes if any
-	if len(h.groups) > 0 {
-		group := strings.Join(h.groups, ".")
-		for _, attr := range attrs {
-			h2.attrs = append(h2.attrs, slog.Attr{
-				Key:   fmt.Sprintf("%s.%s", group, attr.Key),
-				Value: attr.Value,
-			})
-		}
-	} else {
-		h2.attrs = append(h2.attrs, attrs...)
-	}
-
-	return h2
+	h2 := *h
+	h2.attrs = append(h2.attrs, attrs...)
+	return &h2
 }
 
 // WithGroup returns a new Handler with the given group name.
 func (h *Handler) WithGroup(name string) slog.Handler {
-	if name == "" {
-		return h
-	}
-
-	h2 := &Handler{
-		opts:  h.opts,
-		attrs: make([]slog.Attr, len(h.attrs)),
-	}
-	copy(h2.attrs, h.attrs)
-	h2.groups = make([]string, 0, len(h.groups)+1)
-	h2.groups = append(h2.groups, h.groups...)
+	h2 := *h
 	h2.groups = append(h2.groups, name)
-	return h2
+	return &h2
 }
 
 // formatLevel returns a fixed-width, uppercase level string with optional color.
@@ -160,6 +143,18 @@ func formatLevel(level slog.Level, disableColor bool) string {
 	}
 
 	return fmt.Sprintf("%s%s%s", colorCode, levelStr, colorReset)
+}
+
+func (h *Handler) appendAttrs(attrs []string, newAttrs []slog.Attr) []string {
+	prefix := strings.Join(h.groups, ".")
+	for _, attr := range newAttrs {
+		key := attr.Key
+		if prefix != "" {
+			key = prefix + "." + key
+		}
+		attrs = append(attrs, formatAttr(slog.Attr{Key: key, Value: attr.Value}, h.opts.DisableColor))
+	}
+	return attrs
 }
 
 // formatAttr formats a single attribute as "key=value".

@@ -20,6 +20,10 @@ type Options struct {
 	// DisableColor disables colored output for log levels.
 	// When true, no ANSI color codes will be used.
 	DisableColor bool
+
+	// AddSource causes the handler to compute the source code position
+	// of the log statement and add a "source" attribute to the output.
+	AddSource bool
 }
 
 // DefaultOptions returns a new Options with default values.
@@ -28,5 +32,6 @@ func DefaultOptions() *Options {
 		Level:        slog.LevelInfo,
 		TimeFormat:   "15:04:05",
 		DisableColor: false,
+		AddSource:    true,
 	}
 }
