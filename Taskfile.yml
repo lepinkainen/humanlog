@@ -73,3 +73,35 @@ tasks:
     desc: Run benchmarks
     cmds:
       - go test -bench=. -benchmem ./...
+
+  # Release validation task
+  release-check:
+    desc: Pre-release validation checks
+    cmds:
+      - echo "Running pre-release validation..."
+      - task: test
+      - task: lint
+      - |
+        git diff --quiet || \
+          (echo "Error: Working directory is not clean" && exit 1)
+      - echo "✅ Ready for release"
+
+  # Generate changelog locally for preview
+  changelog:
+    desc: Generate CHANGELOG.md
+    cmds:
+      - |
+        command -v git-chglog >/dev/null 2>&1 || \
+          (echo "Error: git-chglog not installed. Run: go install github.com/git-chglog/git-chglog/cmd/git-chglog@latest" && exit 1)
+      - git-chglog --output CHANGELOG.md
+      - echo "✅ CHANGELOG.md generated"
+
+  # Local GoReleaser snapshot (no release)
+  release-snapshot:
+    desc: Test release process locally (no actual release)
+    cmds:
+      - |
+        command -v goreleaser >/dev/null 2>&1 || \
+          (echo "Error: goreleaser not installed. Run: brew install goreleaser or see https://goreleaser.com/install/" && exit 1)
+      - goreleaser release --snapshot --clean --skip=publish
+      - echo "✅ Snapshot release created in dist/"

@@ -1,0 +1,54 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - skip: true  # Library only, no binaries needed
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+  groups:
+    - title: 'Features'
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: 'Bug Fixes'
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: 'Performance Improvements'
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: 'Refactors'
+      regexp: '^.*?refactor(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: 'Other Changes'
+      order: 999
+
+release:
+  github:
+    owner: lepinkainen
+    name: humanlog
+  prerelease: auto  # v0.x.x are automatically marked as pre-releases
+  name_template: "{{.Tag}}"
+  header: |
+    ## humanlog {{.Tag}}
+
+    A human-readable formatter for Go's log/slog package.
+  footer: |
+    **Full Changelog**: https://github.com/lepinkainen/humanlog/compare/{{.PreviousTag}}...{{.Tag}}
+
+    ## Installation
+
+    ```sh
+    go get github.com/lepinkainen/humanlog@{{.Tag}}
+    ```
