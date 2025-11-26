@@ -124,9 +124,10 @@ func TestHandler_Handle(t *testing.T) {
 
 			// Check that the message is padded to the fixed width
 			// This is a simple check to ensure the fixed-width formatting is applied
-			if len(tt.message) < messageWidth {
-				// If the message is shorter than messageWidth, there should be spaces after it
-				expectedPadding := messageWidth - len(tt.message)
+			defaultWidth := 40 // default message width
+			if len(tt.message) < defaultWidth {
+				// If the message is shorter than defaultWidth, there should be spaces after it
+				expectedPadding := defaultWidth - len(tt.message)
 				if !strings.Contains(got, tt.message+strings.Repeat(" ", expectedPadding)) {
 					t.Errorf("Handler.Handle() output = %v, should contain padded message", got)
 				}
@@ -280,6 +281,159 @@ func TestHandler_AttributeFormatting(t *testing.T) {
 				t.Errorf("Attribute formatting output = %v, should contain %v", got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestHandler_ConfigurableMessageWidth(t *testing.T) {
+	tests := []struct {
+		name         string
+		messageWidth int
+		message      string
+		expectedLen  int
+	}{
+		{
+			name:         "Custom width 20",
+			messageWidth: 20,
+			message:      "Short message",
+			expectedLen:  20,
+		},
+		{
+			name:         "Custom width 60",
+			messageWidth: 60,
+			message:      "This is a longer message that should be padded",
+			expectedLen:  60,
+		},
+		{
+			name:         "Message too long for width 10",
+			messageWidth: 10,
+			message:      "This message is way too long for the width",
+			expectedLen:  10,
+		},
+		{
+			name:         "Zero width fallback to default",
+			messageWidth: 0,
+			message:      "Test message",
+			expectedLen:  40, // should fallback to default
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := new(bytes.Buffer)
+			h := NewHandler(buf, &Options{
+				Level:        slog.LevelInfo,
+				MessageWidth: tt.messageWidth,
+				DisableColor: true,
+			})
+			logger := slog.New(h)
+
+			logger.Info(tt.message)
+			got := buf.String()
+
+			// Extract the message part from the log line
+			// Format: [TIME] LEVEL MESSAGE(fixed-width) attributes...
+			parts := strings.Split(got, "] ")
+			if len(parts) < 2 {
+				t.Errorf("Unexpected log format: %v", got)
+				return
+			}
+
+			// Get the part after "] " which contains: LEVEL MESSAGE attributes...
+			levelMessagePart := parts[1]
+
+			// Split by spaces to separate level from message
+			fields := strings.Fields(levelMessagePart)
+			if len(fields) < 1 {
+				t.Errorf("Unexpected format after timestamp: %v", got)
+				return
+			}
+
+			// Find where the message starts (after level)
+			levelEndIndex := strings.Index(levelMessagePart, fields[0]) + len(fields[0])
+			if levelEndIndex >= len(levelMessagePart) {
+				t.Errorf("Could not find message part: %v", got)
+				return
+			}
+
+			// Skip spaces after level
+			messageStart := levelEndIndex
+			for messageStart < len(levelMessagePart) && levelMessagePart[messageStart] == ' ' {
+				messageStart++
+			}
+
+			// Extract the fixed-width message (it should be exactly tt.expectedLen characters)
+			if messageStart+tt.expectedLen > len(levelMessagePart) {
+				t.Errorf("Message part shorter than expected: %v", got)
+				return
+			}
+
+			messagePart := levelMessagePart[messageStart : messageStart+tt.expectedLen]
+
+			// The messagePart should be exactly the expected length
+			if len(messagePart) != tt.expectedLen {
+				t.Errorf("Message width = %d, expected %d. Message: %q", len(messagePart), tt.expectedLen, messagePart)
+			}
+
+			// Check truncation with ellipsis for long messages
+			if len(tt.message) > tt.messageWidth && tt.messageWidth > 3 {
+				if !strings.HasSuffix(strings.TrimSpace(messagePart), "...") {
+					t.Errorf("Long message should be truncated with ellipsis: %q", messagePart)
+				}
+			}
+		})
+	}
+}
+
+func TestHandler_JSONOutput(t *testing.T) {
+	buf := new(bytes.Buffer)
+	h := NewHandler(buf, &Options{
+		Level:        slog.LevelInfo,
+		UseJSON:      true,
+		DisableColor: true,
+	})
+	logger := slog.New(h)
+
+	logger.Info("Test JSON message", slog.String("key", "value"), slog.Int("count", 42))
+	got := buf.String()
+
+	// JSON output should contain JSON structure
+	if !strings.Contains(got, `"msg":"Test JSON message"`) {
+		t.Errorf("JSON output should contain message field: %v", got)
+	}
+	if !strings.Contains(got, `"key":"value"`) {
+		t.Errorf("JSON output should contain attributes: %v", got)
+	}
+	if !strings.Contains(got, `"count":42`) {
+		t.Errorf("JSON output should contain integer attribute: %v", got)
+	}
+
+	// JSON output should contain level field instead of human-readable format markers
+	if strings.Contains(got, `"level":"INFO"`) {
+		// This is correct - JSON format uses "level":"INFO"
+	} else if strings.Contains(got, "[") && strings.Contains(got, "] INFO") {
+		t.Errorf("JSON output should not contain human-readable format: %v", got)
+	}
+}
+
+func TestHandler_JSONWithGroupsAndAttrs(t *testing.T) {
+	buf := new(bytes.Buffer)
+	h := NewHandler(buf, &Options{
+		Level:   slog.LevelInfo,
+		UseJSON: true,
+	})
+
+	// Test grouped attributes in JSON mode
+	groupedHandler := h.WithGroup("request").WithAttrs([]slog.Attr{
+		slog.String("id", "123"),
+	})
+	logger := slog.New(groupedHandler)
+
+	logger.Info("Request processed", slog.String("status", "success"))
+	got := buf.String()
+
+	// Should contain grouped attributes in JSON format
+	if !strings.Contains(got, `"request"`) {
+		t.Errorf("JSON output should contain group: %v", got)
 	}
 }
 

@@ -44,7 +44,18 @@ func (h *Handler) Enabled(ctx context.Context, level slog.Level) bool {
 // Format: [TIME] LEVEL Message(fixed-width-40-chars) key=value key2=value2 ...
 // The message is truncated with ellipsis if it exceeds the fixed width.
 // Attributes are displayed in a separate column after the message field.
-func (h *Handler) Handle(_ context.Context, r slog.Record) error {
+// If UseJSON is enabled, delegates to the underlying JSON handler.
+func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
+	// Early return if this level is not enabled (performance optimization)
+	if !h.Enabled(ctx, r.Level) {
+		return nil
+	}
+
+	// If JSON mode is enabled, delegate to the underlying handler
+	if h.opts.UseJSON {
+		return h.h.Handle(ctx, r)
+	}
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -54,14 +65,22 @@ func (h *Handler) Handle(_ context.Context, r slog.Record) error {
 	// Format level
 	levelStr := formatLevel(r.Level, h.opts.DisableColor)
 
-	// Format message (truncate and pad to fixed width)
+	// Format message (truncate and pad to configured width)
 	message := r.Message
-	if len(message) > messageWidth {
+	width := h.opts.MessageWidth
+	if width <= 0 {
+		width = messageWidth // fallback to constant default
+	}
+	if len(message) > width {
 		// Truncate with ellipsis, ensuring space for "..."
-		message = message[:messageWidth-3] + "..."
+		if width > 3 {
+			message = message[:width-3] + "..."
+		} else {
+			message = message[:width]
+		}
 	}
 	// Use Sprintf with %-*s for left-alignment and padding
-	formattedMessage := fmt.Sprintf("%-*s", messageWidth, message)
+	formattedMessage := fmt.Sprintf("%-*s", width, message)
 
 	// Build the log line
 	var sb strings.Builder
@@ -93,8 +112,9 @@ func (h *Handler) Handle(_ context.Context, r slog.Record) error {
 		}
 	}
 
-	// Add attributes if any
+	// Add attributes if any (lazy evaluation - only format if needed)
 	if len(attrs) > 0 {
+		sb.WriteString(" ")
 		sb.WriteString(strings.Join(attrs, " "))
 	}
 
@@ -106,6 +126,15 @@ func (h *Handler) Handle(_ context.Context, r slog.Record) error {
 
 // WithAttrs returns a new Handler whose attributes consist of h's attributes followed by attrs.
 func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	if h.opts.UseJSON {
+		return &Handler{
+			h:      h.h.WithAttrs(attrs),
+			opts:   h.opts,
+			attrs:  nil,
+			groups: nil,
+		}
+	}
+
 	h2 := *h
 	h2.attrs = append(h2.attrs, attrs...)
 	return &h2
@@ -113,6 +142,15 @@ func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
 
 // WithGroup returns a new Handler with the given group name.
 func (h *Handler) WithGroup(name string) slog.Handler {
+	if h.opts.UseJSON {
+		return &Handler{
+			h:      h.h.WithGroup(name),
+			opts:   h.opts,
+			attrs:  nil,
+			groups: nil,
+		}
+	}
+
 	h2 := *h
 	h2.groups = append(h2.groups, name)
 	return &h2

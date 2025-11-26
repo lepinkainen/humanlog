@@ -21,15 +21,25 @@ func NewHandler(w io.Writer, opts *Options) *Handler {
 	options := *opts
 	options.Writer = w
 
-	return &Handler{
-		h: slog.NewTextHandler(w, &slog.HandlerOptions{
+	// Create the underlying handler based on UseJSON option
+	var underlyingHandler slog.Handler
+	if opts.UseJSON {
+		underlyingHandler = slog.NewJSONHandler(w, &slog.HandlerOptions{
+			AddSource: opts.AddSource,
+			Level:     opts.Level,
+		})
+	} else {
+		underlyingHandler = slog.NewTextHandler(w, &slog.HandlerOptions{
 			AddSource:   opts.AddSource,
 			Level:       opts.Level,
 			ReplaceAttr: nil, // We do our own attribute handling
-		}),
+		})
+	}
+
+	return &Handler{
+		h:      underlyingHandler,
 		opts:   options,
 		attrs:  nil,
 		groups: nil,
 	}
 }
-
