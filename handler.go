@@ -135,9 +135,13 @@ func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
 		}
 	}
 
-	h2 := *h
-	h2.attrs = append(h2.attrs, attrs...)
-	return &h2
+	h2 := &Handler{
+		h:      h.h,
+		opts:   h.opts,
+		attrs:  append(append([]slog.Attr{}, h.attrs...), attrs...),
+		groups: h.groups,
+	}
+	return h2
 }
 
 // WithGroup returns a new Handler with the given group name.
@@ -151,9 +155,13 @@ func (h *Handler) WithGroup(name string) slog.Handler {
 		}
 	}
 
-	h2 := *h
-	h2.groups = append(h2.groups, name)
-	return &h2
+	h2 := &Handler{
+		h:      h.h,
+		opts:   h.opts,
+		attrs:  h.attrs,
+		groups: append(append([]string{}, h.groups...), name),
+	}
+	return h2
 }
 
 // formatLevel returns a fixed-width, uppercase level string with optional color.
@@ -196,7 +204,7 @@ func (h *Handler) appendAttrs(attrs []string, newAttrs []slog.Attr) []string {
 }
 
 // formatAttr formats a single attribute as "key=value".
-func formatAttr(attr slog.Attr, disableColor bool) string {
+func formatAttr(attr slog.Attr, _ bool) string {
 	if attr.Equal(slog.Attr{}) {
 		return ""
 	}

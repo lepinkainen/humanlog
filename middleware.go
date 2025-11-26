@@ -69,7 +69,9 @@ func (cl *ContextLogger) extractContextAttrs(ctx context.Context) []slog.Attr {
 // LogAttrs logs with both context-extracted attributes and provided attributes
 func (cl *ContextLogger) LogAttrs(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) {
 	contextAttrs := cl.extractContextAttrs(ctx)
-	allAttrs := append(contextAttrs, attrs...)
+	allAttrs := make([]slog.Attr, 0, len(contextAttrs)+len(attrs))
+	allAttrs = append(allAttrs, contextAttrs...)
+	allAttrs = append(allAttrs, attrs...)
 	cl.logger.LogAttrs(ctx, level, msg, allAttrs...)
 }
 

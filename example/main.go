@@ -1,3 +1,4 @@
+// Package main demonstrates the usage of the humanlog handler.
 package main
 
 import (

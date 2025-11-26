@@ -1,0 +1,75 @@
+# Taskfile for humanlog - A Go library project
+# See: https://taskfile.dev/
+version: '3'
+
+vars:
+  BUILD_DIR: build
+  PROJECT_NAME: humanlog
+
+tasks:
+  # Core build task - runs tests and linting
+  build:
+    desc: Build the project (test + lint for library)
+    deps: [test, lint]
+    cmds:
+      - echo "✅ humanlog library validated successfully"
+
+  # Build the example application
+  build-example:
+    desc: Build the example application
+    deps: [test, lint]
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}
+      - go build -o {{.BUILD_DIR}}/{{.PROJECT_NAME}}-example ./example/main.go
+      - echo "✅ Example built to {{.BUILD_DIR}}/{{.PROJECT_NAME}}-example"
+
+  # CI build without tests/linting (run separately in CI)
+  build-ci:
+    desc: Build for CI/CD (compile only)
+    cmds:
+      - go build ./...
+      - go build -o {{.BUILD_DIR}}/{{.PROJECT_NAME}}-example ./example/main.go
+
+  # Test tasks
+  test:
+    desc: Run tests
+    cmds:
+      - go test ./...
+
+  test-ci:
+    desc: Run tests with coverage for CI
+    cmds:
+      - go test -tags=ci -cover -v ./...
+
+  # Linting tasks
+  lint:
+    desc: Lint and format code
+    cmds:
+      - goimports -w *.go example/*.go
+      - go vet ./...
+      - golangci-lint run
+
+  # Format code
+  fmt:
+    desc: Format code with goimports
+    cmds:
+      - goimports -w .
+
+  # Clean build artifacts
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.BUILD_DIR}}
+      - go clean -cache -testcache
+
+  # Run the example
+  run:
+    desc: Run the example application
+    cmds:
+      - go run ./example/main.go
+
+  # Run benchmarks
+  bench:
+    desc: Run benchmarks
+    cmds:
+      - go test -bench=. -benchmem ./...
