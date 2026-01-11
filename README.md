@@ -26,10 +26,33 @@ func main() {
 
 ## Configuration
 
-You can customize log level, color, and time format via the `Options` struct:
+Pass `nil` as the second argument to use default options:
 
 ```go
-opts := &humanlog.Options{Level: slog.LevelDebug, DisableColor: true}
+handler := humanlog.NewHandler(os.Stdout, nil) // Uses all defaults
+```
+
+### Default Values
+
+| Option         | Default         | Description                              |
+|----------------|-----------------|------------------------------------------|
+| `Level`        | `slog.LevelInfo`| Minimum log level                        |
+| `TimeFormat`   | `"15:04:05"`    | Timestamp format (HH:MM:SS)              |
+| `DisableColor` | `false`         | ANSI color codes enabled                 |
+| `AddSource`    | `true`          | Include source file and line number      |
+| `MessageWidth` | `40`            | Fixed message width (truncated/padded)   |
+| `UseJSON`      | `false`         | Human-readable format (not JSON)         |
+
+### Customizing Options
+
+**Important:** When creating an `Options` struct directly, any unset fields use Go's zero values (empty string, 0, false), not the library defaults. This can cause issues like missing timestamps.
+
+To safely customize options, start from `DefaultOptions()` and modify individual fields:
+
+```go
+opts := humanlog.DefaultOptions()
+opts.Level = slog.LevelDebug
+opts.DisableColor = true
 handler := humanlog.NewHandler(os.Stdout, opts)
 ```
 
